@@ -1,5 +1,8 @@
 import aiohttp
 from api.endpoints import ExchangeEndpoints
+from typing import Dict, Tuple
+import time
+import json
 
 class PublicClient:
     def __init__(self, endpoints: ExchangeEndpoints):
@@ -7,25 +10,106 @@ class PublicClient:
         self.session = None
 
     async def __aenter__(self):
-        self.session = aiohttp.ClientSession()
+
+        self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False))
         return self
 
     async def __aexit__(self, exc_type, exc_value, traceback):
         await self.session.close()
 
-    async def fetch(self, url: str, params: dict = None) -> dict:
-        async with self.session.get(url, params=params, ssl=False) as response:
-            response.raise_for_status()
-            return await response.json()
+    async def fetch(self, url: str, params: dict = None,payload: dict = None) -> dict:
+        if url.startswith(self.endpoints.hyper.base_url):
+            headers = {
+                "Content-Type": "application/json"
+            }
+            async with self.session.post(url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    response.raise_for_status()
+        else:
+            async with self.session.get(url, params=params) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    response.raise_for_status()
 
-    def to_ms(self, timestamp: int) -> int:
-        """Convert a timestamp to milliseconds."""
-        return timestamp * 1000
+
+    async def get_prices(self, exchange: str, base_symbol: str) -> dict:
+        endpoints = getattr(self.endpoints, exchange)
+        url = f"{endpoints.base_url}{endpoints.info}" if exchange == "hyper" else f"{endpoints.base_url}{endpoints.kline}"
+        start_time, end_time = self.to_ms('1h')
+
+        if exchange == "bitget":
+            params = {
+                "symbol": f"{base_symbol}USDT",
+                "granularity": "1H",
+                "productType": "usdt-futures"
+            }
+        elif exchange == "bybit":
+            params = {
+                "category": "linear",
+                "symbol": f"{base_symbol}USDT",
+                "interval": "1h"
+            }
+        elif exchange == "binance":
+            params = {
+                "symbol": f"{base_symbol}USDT",
+                "interval": "1h"
+            }
+        elif exchange == "okx":
+            params = {
+                "instId": f"{base_symbol}-USDT-SWAP",
+                "bar": "1h"
+            }
+        elif exchange == "gateio":
+            params = {
+                "contract": f"{base_symbol}_USDT",
+                "interval": "1h"
+            }
+        elif exchange == "paradex":
+            params = {
+                "market": f"{base_symbol}-USD-PERP",
+                "interval": "1h"
+            }
+        elif exchange == "apx":
+            params = {
+                "symbol": f"{base_symbol}USDT",
+                "interval": "1h"
+            }
+        elif exchange == "hyper":
+            payload = {
+                "type": "candleSnapshot",
+                "req": {
+                    "coin":  f"BTC",
+                    "interval": "1h",
+                    "startTime": start_time,
+                    "endTime": end_time
+                }
+            }
+            return await self.fetch(url, payload=payload)
+
+        elif exchange == "blofin":
+            params = {
+                "instId": f"{base_symbol}-USDT",
+                "bar": "1H"
+            }
+        elif exchange == "bfx":
+            params = {
+                "market_id": f"{base_symbol}-USD",
+                "timestamp_from":start_time,
+                "timestamp_to":end_time,
+                "period": 60
+            }
+        else:
+            raise ValueError(f"Unsupported exchange: {exchange}")
+
+        return await self.fetch(url, params)
 
     async def get_funding_info(self, exchange: str, base_symbol: str) -> dict:
         endpoints = getattr(self.endpoints, exchange)
-        url = f"{endpoints.base_url}{endpoints.funding_info}"
-
+        url = f"{endpoints.base_url}{endpoints.info}" if exchange == "hyper" else f"{endpoints.base_url}{endpoints.funding_info}"
+        start_time, end_time = self.to_ms('1h')
         if exchange == "bitget":
             params = {
                 "symbol": f"{base_symbol}USDT",
@@ -45,78 +129,42 @@ class PublicClient:
             }
         elif exchange == "gateio":
             params = {
-                "contract": f"{base_symbol}_USDT"
+                "contract": f"{base_symbol}_USDT",
+                "limit":4
             }
         elif exchange == "paradex":
             params = {"market": f"{base_symbol}-USD-PERP"}
-        elif exchange == "aevo":
-            params = {
-                "instrument_name": f"{base_symbol}-PERP"
-            }
         elif exchange == "apx":
-            params = {"symbol": f"{base_symbol}USDT"}
+            params = {"symbol": f"{base_symbol}USDT",
+                      "limit":4}
+
+        elif exchange == "hyper":
+            payload = {
+                "type": "fundingHistory",
+                "req": {
+                    "coin":  f"{base_symbol}",
+                    "startTime": start_time,
+                    "endTime": end_time
+                }
+            }
+            return await self.fetch(url, payload=payload)
+
+        elif exchange == "blofin":
+            params = {
+                "instId": f"{base_symbol}-USDT"}
+
+        elif exchange == "bfx":
+            params = {
+                "market_id": f"{base_symbol}-USD",
+                # "start_time":start_time,
+                # "end_time":end_time,
+                "p_limit": 4
+            }
         else:
             raise ValueError(f"Unsupported exchange: {exchange}")
 
         return await self.fetch(url, params)
 
-    async def get_prices(self, exchange: str, base_symbol: str) -> dict:
-        endpoints = getattr(self.endpoints, exchange)
-
-        if exchange == "bitget":
-            url = f"{endpoints.base_url}{endpoints.prices}"
-            params = {
-                "productType": "usdt-futures",
-                "symbol": f"{base_symbol}USDT"
-            }
-            return await self.fetch(url, params)
-        elif exchange == "bybit":
-            url = f"{endpoints.base_url}{endpoints.prices}"
-            params = {
-                "category": "linear",
-                "symbol": f"{base_symbol}USDT"
-            }
-            return await self.fetch(url, params)
-        elif exchange == "binance":
-            url = f"{endpoints.base_url}{endpoints.basis}"
-            params = {
-                "pair": f"{base_symbol}USDT",
-                "contractType": "PERPETUAL"
-            }
-            return await self.fetch(url, params)
-        elif exchange == "okx":
-            url = f"{endpoints.base_url}{endpoints.prices}"
-            params = {
-                "instId": f"{base_symbol}-USDT"
-            }
-            return await self.fetch(url, params)
-        elif exchange == "gateio":
-            url = f"{endpoints.base_url}{endpoints.prices}"
-            params = {
-                "contract": f"{base_symbol}_USDT"
-            }
-            return await self.fetch(url, params)
-        elif exchange == "paradex":
-            url = f"{endpoints.base_url}{endpoints.markets_summary}"
-            params = {
-                "market": f"{base_symbol}-USD-PERP"
-            }
-            return await self.fetch(url, params)
-        elif exchange == "aevo":
-            url = f"{endpoints.base_url}{endpoints.markets}"
-            params = {
-                "asset": base_symbol,
-                "instrument_type": "PERPETUAL"
-            }
-            return await self.fetch(url, params)
-        elif exchange == "apx":
-            url = f"{endpoints.base_url}{endpoints.premium_index}"
-            params = {
-                "symbol": f"{base_symbol}USDT"
-            }
-            return await self.fetch(url, params)
-        else:
-            raise ValueError(f"Unsupported exchange: {exchange}")
 
     async def get_historical_funding(self, exchange: str, base_symbol: str, start_time: int = 0, end_time: int = 0, limit: int = 10) -> dict:
         endpoints = getattr(self.endpoints, exchange)
@@ -158,3 +206,24 @@ class PublicClient:
             raise ValueError(f"Unsupported exchange: {exchange}")
 
         return await self.fetch(url, params)
+
+    def to_ms(self, interval: str) -> Tuple[int, int]:
+        """Convert a timestamp to milliseconds based on the specified interval."""
+        interval_map = {
+            "1m": 60000,
+            "5m": 300000,
+            "15m": 900000,
+            "30m": 1800000,
+            "1h": 3600000,
+            "4h": 14400000,
+            "1d": 86400000
+        }
+        ms_interval = interval_map[interval]
+        current_time = int(time.time())
+        start_time = current_time - (current_time % ms_interval)
+        end_time = start_time + ms_interval
+        return start_time, end_time
+
+
+
+
