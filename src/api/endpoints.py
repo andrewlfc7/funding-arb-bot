@@ -39,12 +39,13 @@ class GateioEndpoints:
     prices: str = "/futures/usdt/contracts"
     kline: str= "/futures/usdt/candlesticks"
 
+
 @dataclass
 class ParadexEndpoints:
     base_url: str = "https://api.prod.paradex.trade/v1"
     funding_info: str = "/funding/data"
     markets_summary: str = "/markets/summary"
-    kline: str = "markets/klines"
+    kline: str = "/markets/klines"
 
 @dataclass
 class APXEndpoints:
@@ -68,6 +69,14 @@ class BFXEndpoints:
     funding_info: str = "/markets/fundingrate"
     kline: str = "/candles"
 
+@dataclass
+class LyraEndpoints:
+    base_url: str = "https://api.lyra.finance/"
+    funding_info: str = "/public/get_funding_rate_history"
+    tickers: str = "public/get_all_instruments"
+    ticker_info: str = "public/get_ticker"
+
+
 
 @dataclass
 class ExchangeEndpoints:
@@ -81,6 +90,8 @@ class ExchangeEndpoints:
     hyper: HyperEndpoints = field(default_factory=HyperEndpoints)
     blofin: BlofinEndpoints = field(default_factory=BlofinEndpoints)
     bfx: BFXEndpoints = field(default_factory=BFXEndpoints)
+    lyra: LyraEndpoints = field(default_factory=LyraEndpoints)
+
 
 
 
